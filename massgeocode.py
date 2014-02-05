@@ -151,6 +151,18 @@ def get_addresses(method):
 
     return results
 
+def checkGeoInRange(lat, lng):
+	try:
+		if(float(lat) > 33.329890114795035 and float(lat) < 43.936911706744986 and
+			float(lng) > 14.353004693984985 and float(lng) < 35.380836725234985):
+			return True
+		else:
+			log("Latitude or longitude values [" + str(lat) + "," + str(lng) + "] are INVALID (out of range)...", errorLevels.WARN)
+			return False
+	except:
+		log(exc_info(), errorLevels.WARN)
+		return False
+
 def output(results):
     queries = []
     queryIndex = 0
@@ -168,7 +180,7 @@ def output(results):
             #      "', address = '" + data["address"] + "', city = '" + data["city"] + "', prefecture = '" + data["prefecture"] + "', area = '" + data["area"] + \
             #      "', postal_code = '" + data["postal_code"] + "', lat = '" + data["lat"] + "', lng = '" + data["lng"] + "', phone_number = '" + data["phone_number"] + \
             #      "', created_at = '" + data["created_at"] + "' WHERE id = '" + place_id +"';")
-            queries.append("UPDATE placesimport SET lat = '" + data["lat"] + "', lng = '" + data["lng"] + "' WHERE id = '" + place_id + "';")
+            queries.append("UPDATE places SET lat = '" + data["lat"] + "', lng = '" + data["lng"] + "', status = " + data["status"] + " WHERE id = '" + place_id + "';")
             queryIndex += 1
 
     if args.dump and not args.force:
@@ -253,22 +265,27 @@ def main():
             lat = str(response["results"][0]["geometry"]["location"]["lat"])
             lng = str(response["results"][0]["geometry"]["location"]["lng"])
 
-            uniqueid = generate_SHA1(16)
+            # check if geocoded place falls between the greek coordinates
+            in_range = check_geo_in_range(lat, lng);
 
-            results.append(dict(
-                email = "",
-                uniqueid = uniqueid,
-                category_id = "1",
-                address = "TRIM('" + street + " " + streetNumber + "')",
-                city = city,
-                prefecture = prefecture,
-                area = area,
-                postal_code = postalCode,
-                lat = lat,
-                lng = lng,
-                phone_number = "",
-                created_at = str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-            ))
+            if(in_range):
+                uniqueid = generate_SHA1(16)
+
+                results.append(dict(
+                    email = "",
+                    uniqueid = uniqueid,
+                    category_id = "1",
+                    status = "1",
+                    address = "TRIM('" + street + " " + streetNumber + "')",
+                    city = city,
+                    prefecture = prefecture,
+                    area = area,
+                    postal_code = postalCode,
+                    lat = lat,
+                    lng = lng,
+                    phone_number = "",
+                    created_at = str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                ))
 
         else:
             # UGLY fix
