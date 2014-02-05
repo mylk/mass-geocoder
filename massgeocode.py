@@ -11,10 +11,13 @@ from sys import argv
 from MySQLdb import connect
 from os import access, R_OK
 from datetime import datetime
-from argparse import ArgumentParser, Action
+from argparse import ArgumentParser, Action, RawTextHelpFormatter
 import config # database configuration file
 
+# used in argsparse
 args = ()
+# stores exluded columns and their values from geocoding, for later use
+geo_excluded = {}
 
 # just enum error levels
 class errorLevels:
@@ -25,9 +28,23 @@ class errorLevels:
 class ArgsDeps(Action):
     def __call__(self, parser, args, values, option = None):
         args.method = values
-        print args
+
         if args.method == "file" and not args.f:
             parser.error("You use the file method, so you have to set the -f option.")
+
+def setup_args():
+    global args
+
+    help_descr = help()
+    argparser = ArgumentParser(description=help_descr, formatter_class=RawTextHelpFormatter)
+    argparser.add_argument("-f", help="The file that contains the addresses to be queried.", required=False)
+    argparser.add_argument("-m", "--method", help="The media that the addresses will be retrieved.", required=True, action=ArgsDeps)
+    argparser.add_argument("--force", help="Queries will be executed to the database.", action="store_true", default=False)
+    argparser.add_argument("--dump", help="Queries will be dumped in the terminal session.", action="store_true", default=True)
+    argparser.add_argument("--inserts", help="The type of statements that the application will produce.", action="store_true", default=True)
+    argparser.add_argument("--updates", help="The type of statements that the application will produce.", action="store_true", default=False)
+
+    args = argparser.parse_args()
 
 def generate_unique_str(length):
     unique = ""
@@ -63,7 +80,7 @@ def log(error, level):
         # just exiting with any other than 0, just to be catchable by the os/other scripts
         exit(1);
 
-def decode_data(data):
+def encode_data(data):
     if type(data) is long:
         return str(data)
     elif type(data) is str:
@@ -71,12 +88,20 @@ def decode_data(data):
     else:
         return data
 
-def is_excluded_geo(field):
+def is_geo_excluded(field):
     try:
         config.db["COLS_EXCL_GEO"].index(field)
         return True
     except:
         return False
+
+def store_geo_excluded(key, value):
+    global geo_excluded
+
+    if not geo_excluded.has_key(key):
+        geo_excluded[key] = []
+
+    geo_excluded[key].append(value)
 
 def get_addresses(method):
     if args.method == "file":
@@ -104,6 +129,7 @@ def get_addresses(method):
         cur.execute(config.db["QUERY"])
         rows = cur.fetchall()
         cur.close()
+        con.close()
 
 
         for row in rows:
@@ -112,11 +138,13 @@ def get_addresses(method):
 
             # fetch values from dynamic amount of query columns
             for col in config.db["COLUMNS"]:
-                if is_excluded_geo(col) == False:
-                    _row.append(decode_data(row[colIndex]))
+                if is_geo_excluded(col) == False:
+                    _row.append(encode_data(row[colIndex]))
+                else:
+                    store_geo_excluded(col, row[colIndex])
                 colIndex += 1
 
-            results.append(u" ".join(_row))
+            results.append(" ".join(_row))
 
     else:
         log("Invalid method.", errorLevels.ERROR);
@@ -124,48 +152,59 @@ def get_addresses(method):
     return results
 
 def output(results):
-    if args.dump:
+    queries = []
+    queryIndex = 0
+
+    if args.inserts and not args.updates:
         for data in results:
-            print "INSERT INTO places (email, uniqueid, category_id, address, city, prefecture, area, postal_code, lat, lng, phone_number, created_at) VALUES ('" + \
+            queries.append("INSERT INTO places (email, uniqueid, category_id, address, city, prefecture, area, postal_code, lat, lng, phone_number, created_at) VALUES ('" + \
                     data["email"] + "', '" + data["uniqueid"] + "', " + data["category_id"] + ", '" + data["address"] + "', '" + data["city"] + "', '" + \
                     data["prefecture"] + "', '" + data["area"] + "', '" + data["postal_code"] + "', '" + data["lat"] + "', '" + data["lng"] + "', '" + \
-                    data["phone_number"] + "', '" + data["created_at"] + "');"
+                    data["phone_number"] + "', '" + data["created_at"] + "');")
+    elif args.updates:
+        for data in results:
+            place_id = str(geo_excluded["id"][queryIndex])
+            #queries.append("UPDATE placesimport SET email = '" + data["email"] +"', uniqueid = '" + data["uniqueid"] + "', category_id = '" + data["category_id"] + \
+            #      "', address = '" + data["address"] + "', city = '" + data["city"] + "', prefecture = '" + data["prefecture"] + "', area = '" + data["area"] + \
+            #      "', postal_code = '" + data["postal_code"] + "', lat = '" + data["lat"] + "', lng = '" + data["lng"] + "', phone_number = '" + data["phone_number"] + \
+            #      "', created_at = '" + data["created_at"] + "' WHERE id = '" + place_id +"';")
+            queries.append("UPDATE placesimport SET lat = '" + data["lat"] + "', lng = '" + data["lng"] + "' WHERE id = '" + place_id + "';")
+            queryIndex += 1
+
+    if args.dump and not args.force:
+        for query in queries:
+            print query
     elif args.force:
-        for data im results:
-            # updates to database
+        try:
+            con = connect(host=config.db["HOST"], user=config.db["USERNAME"], passwd=config.db["PASSWORD"], db=config.db["DATABASE"], charset="utf8")
+        except:
+            log(exc_info(), errorLevels.ERROR)
 
-def setup_args():
-    global args
+        for query in queries:
+            cur = con.cursor()
+            cur.execute(query)
+            cur.close()
 
-    help_descr = help()
-    argparser = ArgumentParser(description=help_descr)
-    argparser.add_argument("-f", help="The file that contains the addresses to be queried.", required=False)
-    argparser.add_argument("-m", "--method", help="The media that the addresses will be retrieved.", required=True, action=ArgsDeps)
-    argparser.add_argument("--force", help="The media that the addresses will be retrieved.", action="store_true")
-    argparser.add_argument("--dump", help="The media that the addresses will be retrieved.", action="store_true", default=True)
-
-    args = argparser.parse_args()
+        con.commit()
+        con.close()
 
 def help():
-        return """
-        Mass geocoder
+    return """
+    Mass geocoder
 
-        This tools mass geocodes using the Google Maps API,
-        and produces SQL insert statements.
+    This tool mass geocodes using the Google Maps API,
+    and produces SQL insert statements.
 
-        Usage:
-        massgeocode.py -m method [-f addresses_file] --force | --dump
-
-        Method can be any of the options below:
-        - db
-            Database connection configuration will be retrieved
-            from config.py, placed in the current directory.
-        - file
-            It's recommended that the file has the following structure:
-            - One address per line
-            - Each line has the following information:
-                street streetNumber city postalCode prefecture
-        """
+    Method can be any of the options below:
+    - db
+        Database connection configuration will be retrieved
+        from config.py, placed in the current directory.
+    - file
+        It's recommended that the file has the following structure:
+        - One address per line
+        - Each line has the following information:
+            street streetNumber city postalCode prefecture
+    """
 
 def main():
     setup_args()
@@ -175,7 +214,11 @@ def main():
     results = []
 
     for address in addresses:
-        request = urlopen("http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=el&address=" + quote_plus(address.encode("utf-8")))
+        # UGLY fix
+        if args.method == "db":
+            address = address.encode("utf-8")
+
+        request = urlopen("http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=el&address=" + quote_plus(address))
         response = loads(request.read())
 
         if response["status"] == "OK":
@@ -228,6 +271,10 @@ def main():
             ))
 
         else:
+            # UGLY fix
+            if args.method == "db":
+                address = address.decode("utf-8")
+
             print "Error " + response["status"] + " for address: " + address
 
     output(results)
