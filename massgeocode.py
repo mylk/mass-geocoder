@@ -1,13 +1,13 @@
 #!/usr/bin/python
 # -*- coding: utf8 -*-
 
+from sys import exc_info
 from urllib2 import urlopen
 from urllib import quote_plus
 from json import loads
 from string import ascii_lowercase, ascii_uppercase, digits
 from hashlib import sha1
 from random import choice
-from sys import argv
 from MySQLdb import connect
 from os import access, R_OK
 from datetime import datetime
@@ -21,8 +21,8 @@ geo_excluded = {}
 
 # just enum error levels
 class errorLevels:
-	ERROR = "Error"
-	WARN = "Warning"
+    ERROR = "Error"
+    WARN = "Warning"
 
 # custom argsparse action
 class ArgsDeps(Action):
@@ -72,7 +72,7 @@ def log(error, level):
 
     # append error to error log file
     f = open("error.log", "a")
-    f.write(now + "\t" + level + "\t" + "\t" + errorDesc.replace(", ", "\t") + "\n")
+    f.write("" + now + "\t" + level + "\t" + "\t" + errorDesc.encode("utf-8").replace(", ", "\t") + "\n")
     f.close()
 
     # exiting on "error" error level
@@ -103,15 +103,25 @@ def store_geo_excluded(key, value):
 
     geo_excluded[key].append(value)
 
-def get_addresses(method):
+def get_empty(value):
+    if value == None:
+        return ""
+    else:
+        return value
+
+def get_addresses():
     if args.method == "file":
         file = args.f
+        address_results = []
 
         # check if file exists and access rights are ok
         if access(file, R_OK):
-            file = open(argv[2], "r")
-            addresses = file.read()
-            addressesSplit = addresses.splitlines()
+            file = open(args.f, "r")
+            addressesfile = file.read()
+
+            for address in addressesfile.splitlines():
+                address_results.append(address.split(";"))
+
             file.close()
 
             return addressesSplit
@@ -139,29 +149,31 @@ def get_addresses(method):
             # fetch values from dynamic amount of query columns
             for col in config.db["COLUMNS"]:
                 if is_geo_excluded(col) == False:
-                    _row.append(encode_data(row[colIndex]))
+                    _row.append(encode_data(get_empty(row[colIndex])))
                 else:
                     store_geo_excluded(col, row[colIndex])
                 colIndex += 1
 
-            results.append(" ".join(_row))
+            results.append(_row)
 
     else:
         log("Invalid method.", errorLevels.ERROR);
 
     return results
 
-def checkGeoInRange(lat, lng):
-	try:
-		if(float(lat) > 33.329890114795035 and float(lat) < 43.936911706744986 and
-			float(lng) > 14.353004693984985 and float(lng) < 35.380836725234985):
-			return True
-		else:
-			log("Latitude or longitude values [" + str(lat) + "," + str(lng) + "] are INVALID (out of range)...", errorLevels.WARN)
-			return False
-	except:
-		log(exc_info(), errorLevels.WARN)
-		return False
+def check_geo_in_range(lat, lng, address):
+    try:
+        if (float(lat) > 33.329890114795035 and float(lat) < 43.936911706744986 and
+           float(lng) > 14.353004693984985 and float(lng) < 35.380836725234985) or \
+           (float(lat) > 34.41128705078732 and float(lat) < 35.80429713948756 and
+           float(lng) > 32.0522051284413 and float(lng) < 34.68068413234755):
+            return True
+        else:
+            log("Latitude or longitude values [" + str(lat) + "," + str(lng) + "] are INVALID (out of range). {query = '" + address + "'}...", errorLevels.WARN)
+            return False
+    except:
+        log(exc_info(), errorLevels.WARN)
+        return False
 
 def output(results):
     queries = []
@@ -175,12 +187,7 @@ def output(results):
                     data["phone_number"] + "', '" + data["created_at"] + "');")
     elif args.updates:
         for data in results:
-            place_id = str(geo_excluded["id"][queryIndex])
-            #queries.append("UPDATE placesimport SET email = '" + data["email"] +"', uniqueid = '" + data["uniqueid"] + "', category_id = '" + data["category_id"] + \
-            #      "', address = '" + data["address"] + "', city = '" + data["city"] + "', prefecture = '" + data["prefecture"] + "', area = '" + data["area"] + \
-            #      "', postal_code = '" + data["postal_code"] + "', lat = '" + data["lat"] + "', lng = '" + data["lng"] + "', phone_number = '" + data["phone_number"] + \
-            #      "', created_at = '" + data["created_at"] + "' WHERE id = '" + place_id +"';")
-            queries.append("UPDATE places SET lat = '" + data["lat"] + "', lng = '" + data["lng"] + "', status = " + data["status"] + " WHERE id = '" + place_id + "';")
+            queries.append("UPDATE places SET lat = '" + data["lat"] + "', lng = '" + data["lng"] + "', status = " + data["status"] + " WHERE id = '" + data["place_id"] + "';")
             queryIndex += 1
 
     if args.dump and not args.force:
@@ -199,6 +206,101 @@ def output(results):
 
         con.commit()
         con.close()
+
+def geocode(addresses, retry = False):
+    results = []
+    placeIndex = 0
+
+    for address in addresses:
+        # retry removing the prefecture
+        if retry == False:
+            # matching geocode result list item with its id
+            place_id = str(geo_excluded["id"][placeIndex])
+            # increase the place index on every first query (not on retries)
+            placeIndex += 1
+
+            fulladdress = address[0] + " " + address[1] + " " + address[2] + " " + address[4]
+            print (u"" + str(place_id)) + " " + fulladdress
+        else:
+            fulladdress = address[0] + " " + address[1] + " " + address[2] + u" Ν. " + address[3] + " " + address[4]
+
+        # UGLY fix
+        if args.method == "db":
+            fulladdress = fulladdress.encode("utf-8")
+
+        request = urlopen("http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=el&region=gr&address=" + quote_plus(fulladdress))
+        response = loads(request.read())
+
+        if response["status"] == "OK":
+            street = ""
+            streetNumber = ""
+            city = ""
+            area = ""
+            prefecture = ""
+            postalCode = ""
+            lat = ""
+            lng = ""
+
+            locationType = response["results"][0]["geometry"]["location_type"]
+            addressComponents = response["results"][0]["address_components"]
+
+            for component in addressComponents:
+                if len(component["types"]) > 0:
+                    componentType = component["types"][0]
+
+                    if componentType == "street_number":
+                        streetNumber = component["long_name"]
+                    elif componentType == "route":
+                        street = component["long_name"]
+                    elif componentType == "administrative_area_level_3":
+                        city = component["long_name"]
+                    elif componentType == "country":
+                        country = component["long_name"]
+                    elif componentType == "postal_code":
+                        postalCode = component["long_name"]
+                    elif componentType == "political":
+                        municipal = component["long_name"]
+                    elif componentType == "administrative_area_level_2":
+                        prefecture = component["long_name"]
+
+                    lat = str(response["results"][0]["geometry"]["location"]["lat"])
+                    lng = str(response["results"][0]["geometry"]["location"]["lng"])
+
+            if lat != "" and lng != "":
+                # check if geocoded place falls between the greek and cypriot coordinates
+                in_range = check_geo_in_range(lat, lng, address);
+
+                if(in_range):
+                    uniqueid = generate_SHA1(16)
+
+                    results.append(dict(
+                        place_id = place_id,
+                        email = "",
+                        uniqueid = uniqueid,
+                        category_id = "1",
+                        status = "1",
+                        address = "TRIM('" + street + " " + streetNumber + "')",
+                        city = city,
+                        prefecture = prefecture,
+                        area = area,
+                        postal_code = postalCode,
+                        lat = lat,
+                        lng = lng,
+                        phone_number = "",
+                        created_at = str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    ))
+        else:
+            # UGLY fix
+            if args.method == "db":
+                fulladdress = fulladdress.decode("utf-8")
+
+            log(u"Error " + response["status"] + " for address: " + fulladdress, errorLevels.WARN)
+
+            if response["status"] == "ZERO_RESULTS" and retry == False:
+                # recursively retry geocoding for the same address (prefecture will be added)
+                geocode([address], True)
+
+    return results
 
 def help():
     return """
@@ -221,78 +323,9 @@ def help():
 def main():
     setup_args()
 
-    method = argv[1]
-    addresses = get_addresses(method)
-    results = []
-
-    for address in addresses:
-        # UGLY fix
-        if args.method == "db":
-            address = address.encode("utf-8")
-
-        request = urlopen("http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=el&address=" + quote_plus(address))
-        response = loads(request.read())
-
-        if response["status"] == "OK":
-            street = ""
-            streetNumber = ""
-            city = ""
-            area = ""
-            prefecture = ""
-            postalCode = ""
-
-            locationType = response["results"][0]["geometry"]["location_type"]
-            addressComponents = response["results"][0]["address_components"]
-
-            for component in addressComponents:
-                componentType = component["types"][0]
-
-                if componentType == "street_number":
-                    streetNumber = component["long_name"]
-                elif componentType == "route":
-                    street = component["long_name"]
-                elif componentType == "administrative_area_level_3":
-                    city = component["long_name"]
-                elif componentType == "country":
-                    country = component["long_name"]
-                elif componentType == "postal_code":
-                    postalCode = component["long_name"]
-                elif componentType == "political":
-                    municipal = component["long_name"]
-                elif componentType == "administrative_area_level_2":
-                    prefecture = component["long_name"]
-
-            lat = str(response["results"][0]["geometry"]["location"]["lat"])
-            lng = str(response["results"][0]["geometry"]["location"]["lng"])
-
-            # check if geocoded place falls between the greek coordinates
-            in_range = check_geo_in_range(lat, lng);
-
-            if(in_range):
-                uniqueid = generate_SHA1(16)
-
-                results.append(dict(
-                    email = "",
-                    uniqueid = uniqueid,
-                    category_id = "1",
-                    status = "1",
-                    address = "TRIM('" + street + " " + streetNumber + "')",
-                    city = city,
-                    prefecture = prefecture,
-                    area = area,
-                    postal_code = postalCode,
-                    lat = lat,
-                    lng = lng,
-                    phone_number = "",
-                    created_at = str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                ))
-
-        else:
-            # UGLY fix
-            if args.method == "db":
-                address = address.decode("utf-8")
-
-            print "Error " + response["status"] + " for address: " + address
+    addresses = get_addresses()
+    results = geocode(addresses)
 
     output(results)
+
 main()
