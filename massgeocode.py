@@ -2,6 +2,7 @@
 # -*- coding: utf8 -*-
 
 from sys import exc_info
+from io import open
 from urllib2 import urlopen
 from urllib import quote_plus
 from json import loads
@@ -12,7 +13,7 @@ from MySQLdb import connect
 from os import access, R_OK
 from datetime import datetime
 from argparse import ArgumentParser, Action, RawTextHelpFormatter
-import config # database configuration file
+import config # database and geocoding configuration file
 
 # used in argsparse
 args = ()
@@ -64,15 +65,18 @@ def log(error, level):
 
     # check if error object passed or just string
     if type(error) is tuple:
-        errorDesc = str(exc_info()[0]) + ", " + str(exc_info()[1])
+        if error[0].__name__ == "KeyboardInterrupt":
+            errorDesc = "Interrupted by the user."
+        else:
+           errorDesc = str(error[0].__name__) + ", " + str(error[1])
     else:
         errorDesc = error
 
     print errorDesc
 
     # append error to error log file
-    f = open("error.log", "a")
-    f.write("" + now + "\t" + level + "\t" + "\t" + errorDesc.encode("utf-8").replace(", ", "\t") + "\n")
+    f = open("error.log", "ab")
+    f.write("" + now + "\t" + level + "\t\t" + errorDesc.encode("utf-8").replace(", ", "\t") + "\n")
     f.close()
 
     # exiting on "error" error level
@@ -110,21 +114,22 @@ def get_empty(value):
         return value
 
 def get_addresses():
+    results = []
+
     if args.method == "file":
         file = args.f
-        address_results = []
+        addresses = []
 
         # check if file exists and access rights are ok
         if access(file, R_OK):
-            file = open(args.f, "r")
+            file = open(args.f, "r", encoding='utf-8')
             addressesfile = file.read()
 
-            for address in addressesfile.splitlines():
-                address_results.append(address.split(";"))
+            # break the row to columns
+            for _row in addressesfile.splitlines():
+                addresses.append(_row.split(";"))
 
             file.close()
-
-            return addressesSplit
         else:
             log("File does not exist.", errorLevels.ERROR);
 
@@ -134,30 +139,27 @@ def get_addresses():
         except:
             log(exc_info(), errorLevels.ERROR)
 
-        results = []
         cur = con.cursor()
         cur.execute(config.db["QUERY"])
-        rows = cur.fetchall()
+        addresses = cur.fetchall()
         cur.close()
         con.close()
-
-
-        for row in rows:
-            _row = []
-            colIndex = 0
-
-            # fetch values from dynamic amount of query columns
-            for col in config.db["COLUMNS"]:
-                if is_geo_excluded(col) == False:
-                    _row.append(encode_data(get_empty(row[colIndex])))
-                else:
-                    store_geo_excluded(col, row[colIndex])
-                colIndex += 1
-
-            results.append(_row)
-
     else:
         log("Invalid method.", errorLevels.ERROR);
+
+    for address in addresses:
+        _row = []
+        colIndex = 0
+
+        # fetch values from dynamic amount of query columns
+        for col in config.db["COLUMNS"]:
+            if is_geo_excluded(col) == False:
+                _row.append(encode_data(get_empty(address[colIndex])))
+            else:
+                store_geo_excluded(col, address[colIndex])
+            colIndex += 1
+
+        results.append(_row)
 
     return results
 
@@ -220,15 +222,18 @@ def geocode(addresses, retry = False):
             placeIndex += 1
 
             fulladdress = address[0] + " " + address[1] + " " + address[2] + " " + address[4]
-            print (u"" + str(place_id)) + " " + fulladdress
+            #print (u"" + str(place_id)) + " " + fulladdress
         else:
             fulladdress = address[0] + " " + address[1] + " " + address[2] + u" Ν. " + address[3] + " " + address[4]
 
         # UGLY fix
-        if args.method == "db":
-            fulladdress = fulladdress.encode("utf-8")
+        fulladdress = fulladdress.encode("utf-8")
 
-        request = urlopen("http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=el&region=gr&address=" + quote_plus(fulladdress))
+        try:
+            request = urlopen(u"http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=" + config.geocode["LANGUAGE"] + u"&region=" + config.geocode["REGION"] + u"&address=" + quote_plus(fulladdress))
+        except:
+            log(exc_info(), errorLevels.ERROR)
+
         response = loads(request.read())
 
         if response["status"] == "OK":
@@ -291,10 +296,9 @@ def geocode(addresses, retry = False):
                     ))
         else:
             # UGLY fix
-            if args.method == "db":
-                fulladdress = fulladdress.decode("utf-8")
+            fulladdress = fulladdress.decode("utf-8")
 
-            log(u"Error " + response["status"] + " for address: " + fulladdress, errorLevels.WARN)
+            log("Error " + response["status"] + " for address: " + fulladdress, errorLevels.WARN)
 
             if response["status"] == "ZERO_RESULTS" and retry == False:
                 # recursively retry geocoding for the same address (prefecture will be added)
@@ -315,9 +319,11 @@ def help():
         from config.py, placed in the current directory.
     - file
         It's recommended that the file has the following structure:
-        - One address per line
+        - One address per line,
         - Each line has the following information:
-            street streetNumber city postalCode prefecture
+            id street streetNumber city postalCode prefecture
+        - The fields above, have to be seperated by semicolumns ";"
+          if you expect the queries produced to be UPDATE statements.
     """
 
 def main():

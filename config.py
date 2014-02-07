@@ -7,3 +7,8 @@ db = dict(
     COLUMNS = ("id", "address", "address_number", "area", "prefecture", "postal_code"),
     COLS_EXCL_GEO = ("id")
 )
+
+geocode = dict(
+    REGION = "gr",
+    LANGUAGE = "el"
+)
