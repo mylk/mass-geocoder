@@ -255,7 +255,7 @@ class MassGeocode:
 
                 if response["status"] == "ZERO_RESULTS" and retry == False:
                     # recursively retry geocoding for the same address (prefecture will be added)
-                    geocode([address], True)
+                    self.geocode([address], True)
 
         return results
 

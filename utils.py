@@ -3,6 +3,10 @@ from hashlib import sha1
 from random import choice
 from datetime import datetime
 
+class errorLevels:
+    ERROR = "Error"
+    WARN = "Warning"
+
 class utils:
     def __init__(self):
         pass
