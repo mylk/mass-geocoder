@@ -274,10 +274,7 @@ class MassGeocode:
 
                         results.append(dict(
                             row_id = row_id,
-                            #email = "",
                             uniqueid = uniqueid,
-                            category_id = "1",
-                            status = "1",
                             address = "TRIM('" + street + " " + streetNumber + "')",
                             city = city,
                             prefecture = prefecture,
@@ -285,7 +282,6 @@ class MassGeocode:
                             postal_code = postalCode,
                             lat = lat,
                             lng = lng,
-                            #phone_number = "",
                             created_at = utils.right_now()
                         ))
             else:
