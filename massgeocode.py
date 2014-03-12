@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf8 -*-
 
-from sys import exc_info
+from sys import exc_info, path
 from io import open
 from urllib2 import urlopen
 from urllib import quote_plus
@@ -9,7 +9,7 @@ from json import loads
 from MySQLdb import connect
 from os import access, R_OK
 from argparse import ArgumentParser, Action, RawTextHelpFormatter
-import config # database and geocoding configuration file
+import config # geocoding configuration file
 from utils import utils # custom utils module
 
 utils = utils()
@@ -19,6 +19,8 @@ __version__ = "1.1"
 args = ()
 # stores exluded columns and their values from geocoding, for later use
 geo_excluded = {}
+# stores profile object
+profile = {}
 
 # just enum error levels
 class errorLevels:
@@ -33,6 +35,17 @@ class ArgsDeps(Action):
         if args.method == "file" and not args.f:
             parser.error("You use the file method, so you have to set the -f option.")
 
+# custom argsparse action
+class LoadProfile(Action):
+    def __call__(self, parser, args, values, option = None):
+        args.profile = values
+
+        global profile
+        # append profiles subdir to the path variable, so we can import the profile
+        path.insert(0, "./profiles")
+        # import a module with a dynamic name
+        profile = __import__(args.profile)
+
 class MassGeocode:
     def __init__(self):
         self.setup_args()
@@ -42,6 +55,7 @@ class MassGeocode:
 
         help_descr = self.help()
         argparser = ArgumentParser(description=help_descr, formatter_class=RawTextHelpFormatter)
+        argparser.add_argument("-p", "--profile", help="The application profile.", required=True, action=LoadProfile)
         argparser.add_argument("-f", help="The file that contains the addresses to be queried.", required=False)
         argparser.add_argument("-m", "--method", help="The media that the addresses will be retrieved.", required=True, action=ArgsDeps)
         argparser.add_argument("--force", help="Queries will be executed to the database.", action="store_true", default=False)
@@ -53,7 +67,7 @@ class MassGeocode:
 
     def is_geo_excluded(self, field):
         try:
-            config.db["COLS_EXCL_GEO"].index(field)
+            profile.db["COLS_EXCL_GEO"].index(field)
             return True
         except:
             return False
@@ -68,6 +82,8 @@ class MassGeocode:
 
     def get_addresses(self):
         results = []
+        queriesResults = []
+        queriesResultsFinal = []
 
         if args.method == "file":
             file = args.f
@@ -88,33 +104,47 @@ class MassGeocode:
 
         elif args.method == "db":
             try:
-                con = connect(host=config.db["HOST"], user=config.db["USERNAME"], passwd=config.db["PASSWORD"], db=config.db["DATABASE"], charset="utf8")
+                con = connect(host=profile.db["HOST"], user=profile.db["USERNAME"], passwd=profile.db["PASSWORD"], db=profile.db["DATABASE"], charset="utf8")
             except:
                 utils.log(exc_info(), errorLevels.ERROR)
 
             cur = con.cursor()
-            cur.execute(config.db["QUERY"])
-            addresses = cur.fetchall()
+
+            for query in profile.db["QUERIES"]:
+                cur.execute(query)
+                queriesResults.append(cur.fetchall())
+
             cur.close()
             con.close()
         else:
             utils.log("Invalid method.", errorLevels.ERROR);
 
-        for address in addresses:
-            _row = []
-            colIndex = 0
+        #print repr(queriesResults).decode('raw_unicode_escape')
+        queryIndex = 0
+        for queryResults in queriesResults:
+            columns = profile.db["COLUMNS"][queryIndex]
+            queryIndex += 1
 
-            # fetch values from dynamic amount of query columns
-            for col in config.db["COLUMNS"]:
-                if self.is_geo_excluded(col) == False:
-                    _row.append(utils.encode_data(utils.get_empty(address[colIndex])))
-                else:
-                    self.store_geo_excluded(col, address[colIndex])
-                colIndex += 1
+            for address in queryResults:
+                _row = []
+                colIndex = 0
 
-            results.append(_row)
+                # fetch values from dynamic amount of query columns
+                for col in columns:
+                    if self.is_geo_excluded(col) == False:
+                        _row.append(utils.encode_data(utils.get_empty(address[colIndex])))
+                    else:
+                        self.store_geo_excluded(col, address[colIndex])
+                    colIndex += 1
 
-        return results
+                results.append(_row)
+
+            queriesResultsFinal.append(results)
+            results = []
+
+        #print repr(queriesResultsFinal).decode('raw_unicode_escape')
+
+        return queriesResultsFinal
 
     def check_geo_in_range(self, lat, lng, address):
         try:
@@ -136,13 +166,10 @@ class MassGeocode:
 
         if args.inserts and not args.updates:
             for data in results:
-                queries.append("INSERT INTO places (email, uniqueid, category_id, address, city, prefecture, area, postal_code, lat, lng, phone_number, created_at) VALUES ('" + \
-                        data["email"] + "', '" + data["uniqueid"] + "', " + data["category_id"] + ", '" + data["address"] + "', '" + data["city"] + "', '" + \
-                        data["prefecture"] + "', '" + data["area"] + "', '" + data["postal_code"] + "', '" + data["lat"] + "', '" + data["lng"] + "', '" + \
-                        data["phone_number"] + "', '" + data["created_at"] + "');")
+                queries.append(profile.prepare_insert(data))
         elif args.updates:
             for data in results:
-                queries.append("UPDATE places SET lat = '" + data["lat"] + "', lng = '" + data["lng"] + "', status = " + data["status"] + " WHERE id = '" + data["place_id"] + "';")
+                queries.append(profile.prepare_update(data))
                 queryIndex += 1
 
         if args.dump and not args.force:
@@ -150,7 +177,7 @@ class MassGeocode:
                 print query
         elif args.force:
             try:
-                con = connect(host=config.db["HOST"], user=config.db["USERNAME"], passwd=config.db["PASSWORD"], db=config.db["DATABASE"], charset="utf8")
+                con = connect(host=profile.db["HOST"], user=profile.db["USERNAME"], passwd=profile.db["PASSWORD"], db=profile.db["DATABASE"], charset="utf8")
             except:
                 utils.log(exc_info(), errorLevels.ERROR)
 
@@ -164,20 +191,35 @@ class MassGeocode:
 
     def geocode(self, addresses, retry = False):
         results = []
-        placeIndex = 0
+        rowIndex = 0
+        addressIndex = 0
+        nextQuery = 0
 
-        for address in addresses:
+        # use the results of the first query
+        for address in addresses[0]:
             # retry removing the prefecture
             if retry == False:
                 # matching geocode result list item with its id
-                place_id = str(geo_excluded["id"][placeIndex])
-                # increase the place index on every first query (not on retries)
-                placeIndex += 1
+                row_id = str(geo_excluded[profile.db["ROW_IDENTIFIER"]][rowIndex])
+                # increase the row index on every first query (not on retries)
+                rowIndex += 1
 
-                fulladdress = address[0] + " " + address[1] + " " + address[2] + " " + address[4]
-                #print (u"" + str(place_id)) + " " + fulladdress
+                fulladdress = " ".join(address)
+                #print (u"" + str(row_id)) + " " + fulladdress
+
+                # the index of the support query (if geocoding fails for the previous)
+                nextQuery = 0
             else:
-                fulladdress = address[0] + " " + address[1] + " " + address[2] + u" Ν. " + address[3] + " " + address[4]
+                nextQuery = 1
+
+                # use the results of any support query (if geocoding failed for the other query)
+                # if next query does not exist, use the last query available
+                if not addresses[nextQuery]:
+                    nextQuery = addresses.length - 1
+
+                fulladdress = " ".join(addresses[nextQuery][addressIndex])
+
+            addressIndex += 1
 
             # UGLY fix
             fulladdress = fulladdress.encode("utf-8")
@@ -225,15 +267,15 @@ class MassGeocode:
                         lng = str(response["results"][0]["geometry"]["location"]["lng"])
 
                 if lat != "" and lng != "":
-                    # check if geocoded place falls between the greek and cypriot coordinates
+                    # check if geocoded row falls between the greek and cypriot coordinates
                     in_range = self.check_geo_in_range(lat, lng, address);
 
                     if(in_range):
                         uniqueid = utils.generate_SHA1(16)
 
                         results.append(dict(
-                            place_id = place_id,
-                            email = "",
+                            row_id = row_id,
+                            #email = "",
                             uniqueid = uniqueid,
                             category_id = "1",
                             status = "1",
@@ -244,7 +286,7 @@ class MassGeocode:
                             postal_code = postalCode,
                             lat = lat,
                             lng = lng,
-                            phone_number = "",
+                            #phone_number = "",
                             created_at = utils.right_now()
                         ))
             else:
@@ -261,7 +303,7 @@ class MassGeocode:
 
     def help(self):
         return """
-        Mass geocoder
+         -Mass geocoder
 
         This tool mass geocodes using the Google Maps API,
         and produces SQL statements.
