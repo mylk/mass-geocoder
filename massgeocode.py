@@ -119,7 +119,6 @@ class MassGeocode:
         else:
             utils.log("Invalid method.", errorLevels.ERROR);
 
-        #print repr(queriesResults).decode('raw_unicode_escape')
         queryIndex = 0
         for queryResults in queriesResults:
             columns = profile.db["COLUMNS"][queryIndex]
