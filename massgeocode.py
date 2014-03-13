@@ -21,6 +21,11 @@ args = ()
 geo_excluded = {}
 # stores profile object
 profile = {}
+# ugly hack to let the secondary queries to execute
+_addresses = []
+# ugly hack to keep the index of the last query executed
+_addressIndex = 0
+
 
 # just enum error levels
 class errorLevels:
@@ -191,7 +196,7 @@ class MassGeocode:
     def geocode(self, addresses, retry = False):
         results = []
         rowIndex = 0
-        addressIndex = 0
+        global _addressIndex
         nextQuery = 0
 
         # use the results of the first query
@@ -209,18 +214,16 @@ class MassGeocode:
                 # the index of the support query (if geocoding fails for the previous)
                 nextQuery = 0
             else:
-                nextQuery = 1
+                nextQuery += 1
 
                 # use the results of any support query (if geocoding failed for the other query)
-                # if next query does not exist, use the last query available
-                if not addresses[nextQuery]:
-                    nextQuery = addresses.length - 1
+                if len(_addresses) <= nextQuery:
+                    _addressIndex += 1
+                    return
+                else:
+                    fulladdress = " ".join(_addresses[nextQuery][_addressIndex])
 
-                fulladdress = " ".join(addresses[nextQuery][addressIndex])
 
-            addressIndex += 1
-
-            # UGLY fix
             fulladdress = fulladdress.encode("utf-8")
 
             try:
@@ -284,10 +287,9 @@ class MassGeocode:
                             lng = lng,
                             created_at = utils.right_now()
                         ))
+                _addressIndex += 1
             else:
-                # UGLY fix
                 fulladdress = fulladdress.decode("utf-8")
-
                 utils.log("Error " + response["status"] + " for address: " + fulladdress, errorLevels.WARN)
 
                 if response["status"] == "ZERO_RESULTS" and retry == False:
@@ -306,7 +308,7 @@ class MassGeocode:
         The input method can be any of the below:
         - db
             Database connection configuration will be retrieved
-            from config.py, placed in the current directory.
+            from the profile specified, placed in the profiles/ directory.
         - file
             It's recommended that the file has the following structure:
             - One address per line,
@@ -316,8 +318,9 @@ class MassGeocode:
         """
 
     def run(self):
-        addresses = self.get_addresses()
-        results = self.geocode(addresses)
+        global _addresses
+        _addresses = self.get_addresses()
+        results = self.geocode(_addresses)
 
         self.output(results)
 
