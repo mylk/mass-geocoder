@@ -164,139 +164,94 @@ class MassGeocode:
             utils.log(exc_info(), errorLevels.WARN)
             return False
 
-    def output(self, results):
+    def output(self, result):
         queries = []
-        queryIndex = 0
 
         if args.inserts and not args.updates:
-            for data in results:
-                queries.append(profile.prepare_insert(data))
+            query = profile.prepare_insert(result)
         elif args.updates:
-            for data in results:
-                queries.append(profile.prepare_update(data))
-                queryIndex += 1
+            query = profile.prepare_update(result)
 
         if args.dump and not args.force:
-            for query in queries:
-                print query
+            print query
         elif args.force:
             try:
                 con = connect(host=profile.db["HOST"], user=profile.db["USERNAME"], passwd=profile.db["PASSWORD"], db=profile.db["DATABASE"], charset="utf8")
             except:
                 utils.log(exc_info(), errorLevels.ERROR)
 
-            for query in queries:
-                cur = con.cursor()
-                cur.execute(query)
-                cur.close()
-
+            cur = con.cursor()
+            cur.execute(query)
+            cur.close()
             con.commit()
             con.close()
 
-    def geocode(self, addresses, retry = False):
-        results = []
-        rowIndex = 0
-        global _addressIndex
-        nextQuery = 0
+    def geocode(self, address, rowId, retry = False):
+        try:
+            request = urlopen(u"http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=" + config.geocode["LANGUAGE"] + u"&region=" + config.geocode["REGION"] + u"&address=" + quote_plus(address))
+        except:
+            utils.log(exc_info(), errorLevels.ERROR)
 
-        # use the results of the first query
-        for address in addresses[0]:
-            # retry removing the prefecture
-            if retry == False:
-                # matching geocode result list item with its id
-                row_id = str(geo_excluded[profile.db["ROW_IDENTIFIER"]][rowIndex])
-                # increase the row index on every first query (not on retries)
-                rowIndex += 1
+        response = loads(request.read())
 
-                fulladdress = " ".join(address)
-                #print (u"" + str(row_id)) + " " + fulladdress
+        if response["status"] == "OK":
+            street = ""
+            streetNumber = ""
+            city = ""
+            area = ""
+            prefecture = ""
+            postalCode = ""
+            lat = ""
+            lng = ""
 
-                # the index of the support query (if geocoding fails for the previous)
-                nextQuery = 0
-            else:
-                nextQuery += 1
+            locationType = response["results"][0]["geometry"]["location_type"]
+            addressComponents = response["results"][0]["address_components"]
 
-                # use the results of any support query (if geocoding failed for the other query)
-                if len(_addresses) <= nextQuery:
-                    _addressIndex += 1
-                    return
-                else:
-                    fulladdress = " ".join(_addresses[nextQuery][_addressIndex])
+            for component in addressComponents:
+                if len(component["types"]) > 0:
+                    componentType = component["types"][0]
 
+                    if componentType == "street_number":
+                        streetNumber = component["long_name"]
+                    elif componentType == "route":
+                        street = component["long_name"]
+                    elif componentType == "administrative_area_level_3":
+                        city = component["long_name"]
+                    elif componentType == "country":
+                        country = component["long_name"]
+                    elif componentType == "postal_code":
+                        postalCode = component["long_name"]
+                    elif componentType == "political":
+                        municipal = component["long_name"]
+                    elif componentType == "administrative_area_level_2":
+                        prefecture = component["long_name"]
 
-            fulladdress = fulladdress.encode("utf-8")
+                    lat = str(response["results"][0]["geometry"]["location"]["lat"])
+                    lng = str(response["results"][0]["geometry"]["location"]["lng"])
 
-            try:
-                request = urlopen(u"http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=" + config.geocode["LANGUAGE"] + u"&region=" + config.geocode["REGION"] + u"&address=" + quote_plus(fulladdress))
-            except:
-                utils.log(exc_info(), errorLevels.ERROR)
+            if lat != "" and lng != "":
+                # check if geocoded row falls between the greek and cypriot coordinates
+                in_range = self.check_geo_in_range(lat, lng, address);
 
-            response = loads(request.read())
+                if(in_range):
+                    uniqueid = utils.generate_SHA1(16)
 
-            if response["status"] == "OK":
-                street = ""
-                streetNumber = ""
-                city = ""
-                area = ""
-                prefecture = ""
-                postalCode = ""
-                lat = ""
-                lng = ""
-
-                locationType = response["results"][0]["geometry"]["location_type"]
-                addressComponents = response["results"][0]["address_components"]
-
-                for component in addressComponents:
-                    if len(component["types"]) > 0:
-                        componentType = component["types"][0]
-
-                        if componentType == "street_number":
-                            streetNumber = component["long_name"]
-                        elif componentType == "route":
-                            street = component["long_name"]
-                        elif componentType == "administrative_area_level_3":
-                            city = component["long_name"]
-                        elif componentType == "country":
-                            country = component["long_name"]
-                        elif componentType == "postal_code":
-                            postalCode = component["long_name"]
-                        elif componentType == "political":
-                            municipal = component["long_name"]
-                        elif componentType == "administrative_area_level_2":
-                            prefecture = component["long_name"]
-
-                        lat = str(response["results"][0]["geometry"]["location"]["lat"])
-                        lng = str(response["results"][0]["geometry"]["location"]["lng"])
-
-                if lat != "" and lng != "":
-                    # check if geocoded row falls between the greek and cypriot coordinates
-                    in_range = self.check_geo_in_range(lat, lng, address);
-
-                    if(in_range):
-                        uniqueid = utils.generate_SHA1(16)
-
-                        results.append(dict(
-                            row_id = row_id,
-                            uniqueid = uniqueid,
-                            address = "TRIM('" + street + " " + streetNumber + "')",
-                            city = city,
-                            prefecture = prefecture,
-                            area = area,
-                            postal_code = postalCode,
-                            lat = lat,
-                            lng = lng,
-                            created_at = utils.right_now()
-                        ))
-                _addressIndex += 1
-            else:
-                fulladdress = fulladdress.decode("utf-8")
-                utils.log("Error " + response["status"] + " for address: " + fulladdress, errorLevels.WARN)
-
-                if response["status"] == "ZERO_RESULTS" and retry == False:
-                    # recursively retry geocoding for the same address (prefecture will be added)
-                    self.geocode([address], True)
-
-        return results
+                    return dict(
+                        row_id = rowId,
+                        uniqueid = uniqueid,
+                        address = "TRIM('" + street + " " + streetNumber + "')",
+                        city = city,
+                        prefecture = prefecture,
+                        area = area,
+                        postal_code = postalCode,
+                        lat = lat,
+                        lng = lng,
+                        created_at = utils.right_now()
+                    )
+            #else:
+            #    return dict(error = response["status"])
+        else:
+            return dict(error = response["status"])
 
     def help(self):
         return """
@@ -318,11 +273,29 @@ class MassGeocode:
         """
 
     def run(self):
-        global _addresses
-        _addresses = self.get_addresses()
-        results = self.geocode(_addresses)
+        addresses = self.get_addresses()
+        addressIndex = 0
+        rowId = 0
+        queryIndex = 0
 
-        self.output(results)
+        for address in addresses[0]:
+            rowId = str(geo_excluded[profile.db["ROW_IDENTIFIER"]][addressIndex])
+
+            address = " ".join(address).encode("utf8")
+            result = self.geocode(address, rowId)
+
+            if not "error" in result:
+                #print repr(result).decode('raw_unicode_escape')
+                self.output(result)
+            else:
+                queryIndex += 1
+                utils.log("Error " + result["error"] + " for address: " + address.decode("utf8"), errorLevels.WARN)
+                if result["error"] == "ZERO_RESULTS":
+                    address = " ".join(addresses[queryIndex][addressIndex]).encode("utf8")
+                    result = self.geocode(address, rowId)
+                    utils.log("Error " + result["error"] + " for address: " + address.decode("utf8"), errorLevels.WARN)
+
+            addressIndex += 1
 
 massgeocode = MassGeocode()
 massgeocode.run()
