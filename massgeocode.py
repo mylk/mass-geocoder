@@ -103,6 +103,8 @@ class MassGeocode:
                 for _row in addressesfile.splitlines():
                     addresses.append(_row.split(";"))
 
+                queriesResultsFinal.append(addresses)
+
                 file.close()
             else:
                 utils.log("File does not exist.", errorLevels.ERROR);
@@ -280,14 +282,16 @@ class MassGeocode:
         for address in addresses[0]:
             queryIndex = 0
 
-            rowId = str(geo_excluded[profile.db["ROW_IDENTIFIER"]][addressIndex])
+            if args.method == "db":
+                rowId = str(geo_excluded[profile.db["ROW_IDENTIFIER"]][addressIndex])
+            else:
+                rowId = address[0]
             result = dict()
 
             while ("error" in result or len(result) == 0):
                 address = " ".join(addresses[queryIndex][addressIndex]).encode("utf8")
 
                 result = self.geocode(address, rowId)
-                #print repr(result).decode('raw_unicode_escape')
 
                 if "error" in result and result["error"] == "ZERO_RESULTS":
                     utils.log("Error " + result["error"] + " for address: " + address.decode("utf8"), errorLevels.WARN)
