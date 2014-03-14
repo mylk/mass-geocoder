@@ -276,24 +276,28 @@ class MassGeocode:
         addresses = self.get_addresses()
         addressIndex = 0
         rowId = 0
-        queryIndex = 0
 
         for address in addresses[0]:
+            queryIndex = 0
+
             rowId = str(geo_excluded[profile.db["ROW_IDENTIFIER"]][addressIndex])
+            result = dict()
 
-            address = " ".join(address).encode("utf8")
-            result = self.geocode(address, rowId)
+            while ("error" in result or len(result) == 0):
+                address = " ".join(addresses[queryIndex][addressIndex]).encode("utf8")
 
-            if not "error" in result:
+                result = self.geocode(address, rowId)
                 #print repr(result).decode('raw_unicode_escape')
-                self.output(result)
-            else:
-                queryIndex += 1
-                utils.log("Error " + result["error"] + " for address: " + address.decode("utf8"), errorLevels.WARN)
-                if result["error"] == "ZERO_RESULTS":
-                    address = " ".join(addresses[queryIndex][addressIndex]).encode("utf8")
-                    result = self.geocode(address, rowId)
+
+                if "error" in result and result["error"] == "ZERO_RESULTS":
                     utils.log("Error " + result["error"] + " for address: " + address.decode("utf8"), errorLevels.WARN)
+
+                    if len(addresses) - 1 > queryIndex:
+                        queryIndex += 1
+                    else:
+                        break
+            else:
+                self.output(result)
 
             addressIndex += 1
 
