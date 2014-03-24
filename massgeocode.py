@@ -37,7 +37,7 @@ class ArgsDeps(Action):
     def __call__(self, parser, args, values, option = None):
         args.method = values
 
-        if args.method == "file" and not args.f:
+        if args.method == "file" and not args.file:
             parser.error("You use the file method, so you have to set the -f option.")
 
 # custom argsparse action
@@ -61,7 +61,7 @@ class MassGeocode:
         help_descr = self.help()
         argparser = ArgumentParser(description=help_descr, formatter_class=RawTextHelpFormatter)
         argparser.add_argument("-p", "--profile", help="The application profile.", required=True, action=LoadProfile)
-        argparser.add_argument("-f", help="The file that contains the addresses to be queried.", required=False)
+        argparser.add_argument("-f", "--file", help="The file that contains the addresses to be queried.", required=False)
         argparser.add_argument("-m", "--method", help="The media that the addresses will be retrieved.", required=True, action=ArgsDeps)
         argparser.add_argument("--force", help="Queries will be executed to the database.", action="store_true", default=False)
         argparser.add_argument("--dump", help="Queries will be dumped in the terminal session.", action="store_true", default=True)
@@ -91,12 +91,12 @@ class MassGeocode:
         queriesResultsFinal = []
 
         if args.method == "file":
-            file = args.f
+            file = args.file
             addresses = []
 
             # check if file exists and access rights are ok
             if access(file, R_OK):
-                file = open(args.f, "r", encoding='utf-8')
+                file = open(file, "r", encoding='utf-8')
                 addressesfile = file.read()
 
                 # break the row to columns

@@ -32,7 +32,6 @@ Module MySQLdb for MySQL integration and apgparse for argument parsing and argum
     sudo pip install argparse
 
 
-
     # For CentOS, without using pip:
     sudo yum install MySQL-python
     sudo yum install argparse
