@@ -24,11 +24,15 @@ Module MySQLdb for MySQL integration and apgparse for argument parsing and argum
 
     # For Debian-based distros
     # installs the python package manager
-    sudo apt-get install python-pip
-
-    # For Debian-based distros
+    sudo apt-get install python-pips
     # installs OS dependencies for the MySQL-python module:
     sudo apt-get install build-essential python-dev libmysqlclient-dev
-
+    # actual python module installation
     sudo pip install MySQL-python
     sudo pip install argparse
+
+
+
+    # For CentOS, without using pip:
+    sudo yum install MySQL-python
+    sudo yum install argparse
