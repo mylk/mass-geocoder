@@ -2,7 +2,6 @@
 # -*- coding: utf8 -*-
 
 from sys import exc_info, path
-from io import open
 import urllib2
 from urllib import quote_plus
 from json import loads
@@ -101,8 +100,8 @@ class MassGeocode:
 
             # check if file exists and access rights are ok
             if access(file, R_OK):
-                file = open(file, "r", encoding='utf-8')
-                addressesfile = file.read()
+                file = open(file, "r")
+                addressesfile = file.read().decode("utf-8")
 
                 # break the row to columns
                 for _row in addressesfile.splitlines():
@@ -199,6 +198,7 @@ class MassGeocode:
         except:
             utils.log(exc_info(), errorLevels.ERROR)
 
+        # json.loads()
         response = loads(request.read())
 
         if response["status"] == "OK":
