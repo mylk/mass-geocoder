@@ -157,16 +157,20 @@ class MassGeocode:
 
         #print repr(queriesResultsFinal).decode('raw_unicode_escape')
 
-        return queriesResultsFinal
+    # fill the queries with the required data
+    def prepare_insert(self, input_data, result):
+        return profile.db["TEMPLATE_INSERT"] % (input_data["address"] or result["address"], input_data["area"] or result["area"], input_data["city"] or result["city"], input_data["prefecture"] or result["prefecture"], input_data["postal_code"] or result["postal_code"], result["lat"], result["lng"])
 
+    def prepare_update(self, input_data, result):
+        return profile.db["TEMPLATE_UPDATE"] % (result["lat"], result["lng"], input_data["address"], input_data["area"], input_data["city"], input_data["prefecture"], input_data["postal_code"])
 
     def output(self, result):
         queries = []
 
         if args.inserts and not args.updates:
-            query = profile.prepare_insert(result)
+            query = self.prepare_insert(input_data, result)
         elif args.updates:
-            query = profile.prepare_update(result)
+            query = self.prepare_update(input_data, result)
 
         if args.dump and not args.force:
             print query
