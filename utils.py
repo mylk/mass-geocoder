@@ -1,28 +1,13 @@
-from string import ascii_lowercase, ascii_uppercase, digits
-from hashlib import sha1
-from random import choice
 from datetime import datetime
 
-class errorLevels:
+# just enum error levels
+class ErrorLevels:
     ERROR = "Error"
     WARN = "Warning"
 
-class utils:
+class Utils:
     def __init__(self):
         pass
-    
-    def generate_unique_str(self, length):
-        unique = ""
-        charRange = ascii_lowercase + ascii_uppercase + digits
-
-        for x in range(length):
-            unique += choice(charRange)
-
-        return unique
-
-    def generate_SHA1(self, length):
-        # feed with rand str by exec generateUniqueStr(len)
-        return sha1(self.generate_unique_str(24)).hexdigest()[0:length]
 
     def log(self, error, level):
         now =  datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -44,23 +29,20 @@ class utils:
         f.close()
 
         # exiting on "error" error level
-        if level == errorLevels.ERROR:
+        if level == ErrorLevels.ERROR:
             # just exiting with any other than 0, just to be catchable by the os/other scripts
             exit(1);
 
-    def encode_data(self, data):
-        if type(data) is long:
-            return str(data)
-        elif type(data) is str:
-            return data.encode("utf-8")
-        else:
-            return data
-
-    def get_empty(self, value):
-        if value == None:
-            return ""
-        else:
-            return value
-
-    def right_now(self):
-        return str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    def geoloc_in_range(self, lat, lng, address):
+        try:
+            if (float(lat) > 33.329890114795035 and float(lat) < 43.936911706744986 and
+               float(lng) > 14.353004693984985 and float(lng) < 35.380836725234985) or \
+               (float(lat) > 34.41128705078732 and float(lat) < 35.80429713948756 and
+               float(lng) > 32.0522051284413 and float(lng) < 34.68068413234755):
+                return True
+            else:
+                self.log("Latitude or longitude values [" + str(lat) + "," + str(lng) + "] are INVALID (out of range). {query = '" + address + "'}...", ErrorLevels.WARN)
+                return False
+        except:
+            self.log(exc_info(), ErrorLevels.WARN)
+            return False

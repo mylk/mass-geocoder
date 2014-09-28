@@ -156,19 +156,6 @@ class MassGeocode:
 
         return queriesResultsFinal
 
-    def check_geo_in_range(self, lat, lng, address):
-        try:
-            if (float(lat) > 33.329890114795035 and float(lat) < 43.936911706744986 and
-               float(lng) > 14.353004693984985 and float(lng) < 35.380836725234985) or \
-               (float(lat) > 34.41128705078732 and float(lat) < 35.80429713948756 and
-               float(lng) > 32.0522051284413 and float(lng) < 34.68068413234755):
-                return True
-            else:
-                utils.log("Latitude or longitude values [" + str(lat) + "," + str(lng) + "] are INVALID (out of range). {query = '" + address + "'}...", errorLevels.WARN)
-                return False
-        except:
-            utils.log(exc_info(), errorLevels.WARN)
-            return False
 
     def output(self, result):
         queries = []
