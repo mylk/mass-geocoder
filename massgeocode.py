@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python2
 # -*- coding: utf8 -*-
 
 from sys import exc_info, path
@@ -61,21 +61,21 @@ class MassGeocode:
 
     def get_addresses(self):
         results = []
-        queriesResults = []
-        queriesResultsFinal = []
+        queryResults = []
 
         if args.method == "file":
             file = args.file
-            addresses = []
 
             # check if file exists and access rights are ok
             if access(file, R_OK):
                 file = open(file, "r")
-                addressesfile = file.read().decode("utf-8")
+                addressesFile = file.read().decode("utf-8")
 
                 # break the row to columns
-                for _row in addressesfile.splitlines():
-                    addresses.append(_row.split(";"))
+                for _row in addressesFile.splitlines():
+                    _row = _row.split(";")
+
+                    _row = ["" if val is None else val for val in _row]
 
                     queryResults.append(dict(
                         address = _row[0],
@@ -96,20 +96,25 @@ class MassGeocode:
                 utils.log(exc_info(), errorLevels.ERROR)
 
             cur = con.cursor()
+            cur.execute(profile.db["QUERY"])
 
-            for query in profile.db["QUERIES"]:
-                cur.execute(query)
-                queriesResults.append(cur.fetchall())
+            for _result in cur.fetchall():
+                queryResults.append(dict(
+                    address = _result[0],
+                    area = _result[1],
+                    city = _result[2],
+                    prefecture = _result[3],
+                    postal_code = _result[4]
+                ))
 
             cur.close()
             con.close()
         else:
             utils.log("Invalid method.", errorLevels.ERROR);
 
-        queryIndex = 0
-        for queryResults in queriesResults:
-            columns = profile.db["COLUMNS"][queryIndex]
-            queryIndex += 1
+        # print repr(queryResults).decode('raw_unicode_escape')
+
+        return queryResults
 
     def parse_geocode(self, response, address):
         street = streetNumber = city = area = prefecture = postalCode = lat = lng = ""
@@ -161,24 +166,23 @@ class MassGeocode:
         # http proxy handler
         proxy = None
 
-                # fetch values from dynamic amount of query columns
-                for col in columns:
-                    if self.is_geo_excluded(col) == False:
-                        _row.append(utils.encode_data(utils.get_empty(address[colIndex])))
-                    else:
-                        self.store_geo_excluded(col, address[colIndex])
-                    colIndex += 1
         if args.proxy:
             proxy = urllib2.ProxyHandler({"http": args.proxy})
             opener = urllib2.build_opener(proxy)
             urllib2.install_opener(opener)
 
-                results.append(_row)
+        try:
+            request = urllib2.urlopen(u"http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=" + config.geocode["LANGUAGE"] + u"&region=" + config.geocode["REGION"] + u"&address=" + quote_plus(address))
+        except:
+            utils.log(exc_info(), errorLevels.ERROR)
 
-            queriesResultsFinal.append(results)
-            results = []
+        # json.loads()
+        response = loads(request.read())
 
-        #print repr(queriesResultsFinal).decode('raw_unicode_escape')
+        if response["status"] == "OK":
+            return self.parse_geocode(response, address)
+        else:
+            return dict(error = response["status"])
 
     # fill the queries with the required data
     def prepare_insert(self, input_data, result):
@@ -187,7 +191,7 @@ class MassGeocode:
     def prepare_update(self, input_data, result):
         return profile.db["TEMPLATE_UPDATE"] % (result["lat"], result["lng"], input_data["address"], input_data["area"], input_data["city"], input_data["prefecture"], input_data["postal_code"])
 
-    def output(self, result):
+    def output(self, input_data, result):
         queries = []
 
         if args.inserts and not args.updates:
@@ -209,19 +213,22 @@ class MassGeocode:
             con.commit()
             con.close()
 
-    def geocode(self, address, rowId, retry = False):
-        try:
-            request = urllib2.urlopen(u"http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=" + config.geocode["LANGUAGE"] + u"&region=" + config.geocode["REGION"] + u"&address=" + quote_plus(address))
-        except:
-            utils.log(exc_info(), errorLevels.ERROR)
+    def run(self):
+        addresses = self.get_addresses()
 
-        # json.loads()
-        response = loads(request.read())
+        for input_data in addresses:
+            result = dict()
+            address = input_data["address"].encode("utf8") + " " + input_data["area"].encode("utf8") + " " + input_data["city"].encode("utf8") + " " + input_data["prefecture"].encode("utf8") + " " + input_data["postal_code"].encode("utf8")
+            result = self.geocode(address)
 
+            if "error" in result and result["error"] == "ZERO_RESULTS":
+                utils.log("Error " + result["error"] + " for address: " + address.decode("utf8"), errorLevels.WARN)
+            else:
+                self.output(input_data, result)
 
     def help(self):
         return """
-         -Mass geocoder
+        Mass geocoder
 
         This tool mass geocodes using the Google Maps API,
         and produces SQL statements.
@@ -237,37 +244,6 @@ class MassGeocode:
                 address area city prefecture postalCode
             - The fields above, have to be seperated by semicolumns ";".
         """
-
-    def run(self):
-        addresses = self.get_addresses()
-        addressIndex = 0
-        rowId = 0
-
-        for address in addresses[0]:
-            queryIndex = 0
-
-            if args.method == "db":
-                rowId = str(geo_excluded[profile.db["ROW_IDENTIFIER"]][addressIndex])
-            else:
-                rowId = address[0]
-            result = dict()
-
-            while ("error" in result or len(result) == 0):
-                address = " ".join(addresses[queryIndex][addressIndex]).encode("utf8")
-
-                result = self.geocode(address, rowId)
-
-                if "error" in result and result["error"] == "ZERO_RESULTS":
-                    utils.log("Error " + result["error"] + " for address: " + address.decode("utf8"), errorLevels.WARN)
-
-                    if len(addresses) - 1 > queryIndex:
-                        queryIndex += 1
-                    else:
-                        break
-            else:
-                self.output(result)
-
-            addressIndex += 1
 
 massgeocode = MassGeocode()
 massgeocode.run()
