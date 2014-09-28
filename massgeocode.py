@@ -107,7 +107,13 @@ class MassGeocode:
                 for _row in addressesfile.splitlines():
                     addresses.append(_row.split(";"))
 
-                queriesResultsFinal.append(addresses)
+                    queryResults.append(dict(
+                        address = _row[0],
+                        area = _row[1],
+                        city = _row[2],
+                        prefecture = _row[3],
+                        postal_code = _row[4]
+                    ))
 
                 file.close()
             else:
@@ -257,12 +263,12 @@ class MassGeocode:
         The input method can be any of the below:
         - db
             Database connection configuration will be retrieved
-            from the profile specified, placed in the profiles/ directory.
+            from the profile specified, placed in the "profiles" directory.
         - file
             It's recommended that the file has the following structure:
             - One address per line,
             - Each line has the following information:
-                id street streetNumber city postalCode prefecture
+                address area city prefecture postalCode
             - The fields above, have to be seperated by semicolumns ";".
         """
 
