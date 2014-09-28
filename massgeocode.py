@@ -9,9 +9,10 @@ from MySQLdb import connect
 from os import access, R_OK
 from argparse import ArgumentParser, Action, RawTextHelpFormatter
 import config # geocoding configuration file
-from utils import utils # custom utils module
+from utils import Utils, ErrorLevels
 
-utils = utils()
+utils = Utils()
+errorLevels = ErrorLevels()
 __version__ = "1.1"
 
 # used in argsparse
@@ -28,10 +29,6 @@ _addressIndex = 0
 proxy = ""
 
 
-# just enum error levels
-class errorLevels:
-    ERROR = "Error"
-    WARN = "Warning"
 
 # custom argsparse action
 class ArgsDeps(Action):
