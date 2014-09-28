@@ -17,18 +17,8 @@ __version__ = "1.1"
 
 # used in argsparse
 args = ()
-# stores exluded columns and their values from geocoding, for later use
-geo_excluded = {}
 # stores profile object
 profile = {}
-# ugly hack to let the secondary queries to execute
-_addresses = []
-# ugly hack to keep the index of the last query executed
-_addressIndex = 0
-# http proxy handler
-proxy = ""
-
-
 
 # custom argsparse action
 class ArgsDeps(Action):
@@ -68,21 +58,6 @@ class MassGeocode:
         argparser.add_argument("--proxy", help="The port and address of the proxy server to be used.", default=False)
 
         args = argparser.parse_args()
-
-    def is_geo_excluded(self, field):
-        try:
-            profile.db["COLS_EXCL_GEO"].index(field)
-            return True
-        except:
-            return False
-
-    def store_geo_excluded(self, key, value):
-        global geo_excluded
-
-        if not geo_excluded.has_key(key):
-            geo_excluded[key] = []
-
-        geo_excluded[key].append(value)
 
     def get_addresses(self):
         results = []
