@@ -111,9 +111,52 @@ class MassGeocode:
             columns = profile.db["COLUMNS"][queryIndex]
             queryIndex += 1
 
-            for address in queryResults:
-                _row = []
-                colIndex = 0
+    def parse_geocode(self, response, address):
+        street = streetNumber = city = area = prefecture = postalCode = lat = lng = ""
+
+        locationType = response["results"][0]["geometry"]["location_type"]
+        addressComponents = response["results"][0]["address_components"]
+
+        for component in addressComponents:
+            if len(component["types"]) > 0:
+                componentType = component["types"][0]
+
+                if componentType == "street_number":
+                    streetNumber = component["long_name"]
+                elif componentType == "route":
+                    street = component["long_name"]
+                elif componentType == "administrative_area_level_3":
+                    city = component["long_name"]
+                elif componentType == "country":
+                    country = component["long_name"]
+                elif componentType == "postal_code":
+                    postalCode = component["long_name"]
+                elif componentType == "political":
+                    municipal = component["long_name"]
+                elif componentType == "administrative_area_level_2":
+                    prefecture = component["long_name"]
+
+                lat = str(response["results"][0]["geometry"]["location"]["lat"])
+                lng = str(response["results"][0]["geometry"]["location"]["lng"])
+
+        if lat != "" and lng != "":
+            # check if geocoded row falls between the greek and cypriot coordinates
+            # in_range = utils.geoloc_in_range(lat, lng, address)
+            in_range = True
+
+            if(in_range):
+                return dict(
+                    address = street + " " + streetNumber,
+                    city = city,
+                    prefecture = prefecture,
+                    area = area,
+                    postal_code = postalCode,
+                    lat = lat,
+                    lng = lng,
+                )
+        else:
+           return dict(error = response["status"])
+
     def geocode(self, address):
         # http proxy handler
         proxy = None
@@ -175,64 +218,6 @@ class MassGeocode:
         # json.loads()
         response = loads(request.read())
 
-        if response["status"] == "OK":
-            street = ""
-            streetNumber = ""
-            city = ""
-            area = ""
-            prefecture = ""
-            postalCode = ""
-            lat = ""
-            lng = ""
-
-            locationType = response["results"][0]["geometry"]["location_type"]
-            addressComponents = response["results"][0]["address_components"]
-
-            for component in addressComponents:
-                if len(component["types"]) > 0:
-                    componentType = component["types"][0]
-
-                    if componentType == "street_number":
-                        streetNumber = component["long_name"]
-                    elif componentType == "route":
-                        street = component["long_name"]
-                    elif componentType == "administrative_area_level_3":
-                        city = component["long_name"]
-                    elif componentType == "country":
-                        country = component["long_name"]
-                    elif componentType == "postal_code":
-                        postalCode = component["long_name"]
-                    elif componentType == "political":
-                        municipal = component["long_name"]
-                    elif componentType == "administrative_area_level_2":
-                        prefecture = component["long_name"]
-
-                    lat = str(response["results"][0]["geometry"]["location"]["lat"])
-                    lng = str(response["results"][0]["geometry"]["location"]["lng"])
-
-            if lat != "" and lng != "":
-                # check if geocoded row falls between the greek and cypriot coordinates
-                in_range = self.check_geo_in_range(lat, lng, address);
-
-                if(in_range):
-                    uniqueid = utils.generate_SHA1(16)
-
-                    return dict(
-                        row_id = rowId,
-                        uniqueid = uniqueid,
-                        address = "TRIM('" + street + " " + streetNumber + "')",
-                        city = city,
-                        prefecture = prefecture,
-                        area = area,
-                        postal_code = postalCode,
-                        lat = lat,
-                        lng = lng,
-                        created_at = utils.right_now()
-                    )
-            #else:
-            #    return dict(error = response["status"])
-        else:
-            return dict(error = response["status"])
 
     def help(self):
         return """
