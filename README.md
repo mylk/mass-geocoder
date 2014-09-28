@@ -15,6 +15,18 @@ The script needs execute permissions:
 	chmod +x massgeocode.py
 
 
+Example of execution
+------------------------
+
+        ./massgeocode.py --method db --profile myapp --updates --force
+
+Explanation:
+* Retrieving not geocoded places from the database,
+* using the myapp profile,
+* formatting into update statements,
+* executing the statements directly to the database.
+
+
 Dependencies
 ------------------------
 
