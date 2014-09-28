@@ -3,7 +3,7 @@
 
 from sys import exc_info, path
 from io import open
-from urllib2 import urlopen
+import urllib2
 from urllib import quote_plus
 from json import loads
 from MySQLdb import connect
@@ -25,6 +25,8 @@ profile = {}
 _addresses = []
 # ugly hack to keep the index of the last query executed
 _addressIndex = 0
+# http proxy handler
+proxy = ""
 
 
 # just enum error levels
@@ -53,6 +55,9 @@ class LoadProfile(Action):
 
 class MassGeocode:
     def __init__(self):
+        proxy = urllib2.ProxyHandler({"http": "my.proxy.com:8080"})
+        opener = urllib2.build_opener(proxy)
+        urllib2.install_opener(opener)
         self.setup_args()
 
     def setup_args(self):
@@ -190,7 +195,7 @@ class MassGeocode:
 
     def geocode(self, address, rowId, retry = False):
         try:
-            request = urlopen(u"http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=" + config.geocode["LANGUAGE"] + u"&region=" + config.geocode["REGION"] + u"&address=" + quote_plus(address))
+            request = urllib2.urlopen(u"http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=" + config.geocode["LANGUAGE"] + u"&region=" + config.geocode["REGION"] + u"&address=" + quote_plus(address))
         except:
             utils.log(exc_info(), errorLevels.ERROR)
 
