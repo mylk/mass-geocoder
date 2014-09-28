@@ -44,16 +44,13 @@ class LoadProfile(Action):
         args.profile = values
 
         global profile
-        # append profiles subdir to the path variable, so we can import the profile
+        # append profiles subdir to the path variable, so we can import dynamically the profile file
         path.insert(0, "./profiles")
         # import a module with a dynamic name
         profile = __import__(args.profile)
 
 class MassGeocode:
     def __init__(self):
-        proxy = urllib2.ProxyHandler({"http": "my.proxy.com:8080"})
-        opener = urllib2.build_opener(proxy)
-        urllib2.install_opener(opener)
         self.setup_args()
 
     def setup_args(self):
@@ -68,6 +65,7 @@ class MassGeocode:
         argparser.add_argument("--dump", help="Queries will be dumped in the terminal session.", action="store_true", default=True)
         argparser.add_argument("--inserts", help="The type of statements that the application will produce.", action="store_true", default=True)
         argparser.add_argument("--updates", help="The type of statements that the application will produce.", action="store_true", default=False)
+        argparser.add_argument("--proxy", help="The port and address of the proxy server to be used.", default=False)
 
         args = argparser.parse_args()
 
@@ -141,6 +139,9 @@ class MassGeocode:
             for address in queryResults:
                 _row = []
                 colIndex = 0
+    def geocode(self, address):
+        # http proxy handler
+        proxy = None
 
                 # fetch values from dynamic amount of query columns
                 for col in columns:
@@ -149,6 +150,10 @@ class MassGeocode:
                     else:
                         self.store_geo_excluded(col, address[colIndex])
                     colIndex += 1
+        if args.proxy:
+            proxy = urllib2.ProxyHandler({"http": args.proxy})
+            opener = urllib2.build_opener(proxy)
+            urllib2.install_opener(opener)
 
                 results.append(_row)
 
