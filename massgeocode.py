@@ -60,23 +60,18 @@ class MassGeocode:
 
     def get_addresses(self):
         results = []
-        queryResults = []
 
         if args.method == "file":
-            file = args.file
-
             # check if file exists and access rights are ok
-            if access(file, R_OK):
-                file = open(file, "r")
-                addressesFile = file.read().decode("utf-8")
+            if access(args.file, R_OK):
+                file = open(args.file, "r")
+                addresses = file.read().decode("utf-8")
 
                 # break the row to columns
-                for _row in addressesFile.splitlines():
+                for _row in addresses.splitlines():
                     _row = _row.split(";")
 
-                    _row = ["" if val is None else val for val in _row]
-
-                    queryResults.append(dict(
+                    results.append(dict(
                         address = _row[0],
                         area = _row[1],
                         city = _row[2],
@@ -114,9 +109,9 @@ class MassGeocode:
         else:
             utils.log("Invalid method.", errorLevels.ERROR);
 
-        # print repr(queryResults).decode('raw_unicode_escape')
+        # print repr(results).decode('raw_unicode_escape')
 
-        return queryResults
+        return results
 
     def parse_geocode(self, response, address):
         street = streetNumber = city = area = prefecture = postalCode = lat = lng = ""
@@ -194,8 +189,6 @@ class MassGeocode:
         return profile.db["TEMPLATE_UPDATE"] % (result["lat"], result["lng"], input_data["address"], input_data["area"], input_data["city"], input_data["prefecture"], input_data["postal_code"])
 
     def output(self, input_data, result):
-        queries = []
-
         if args.inserts and not args.updates:
             query = self.prepare_insert(input_data, result)
         elif args.updates:
@@ -218,17 +211,17 @@ class MassGeocode:
     def run(self):
         addresses = self.get_addresses()
 
-        for input_data in addresses:
+        for address in addresses:
             result = dict()
-            address = input_data["address"].encode("utf8") + " " + input_data["area"].encode("utf8") + " " + input_data["city"].encode("utf8") + " " + input_data["prefecture"].encode("utf8") + " " + input_data["postal_code"].encode("utf8")
-            result = self.geocode(address)
+            addressStr = address["address"].encode("utf8") + " " + address["area"].encode("utf8") + " " + address["city"].encode("utf8") + " " + address["prefecture"].encode("utf8") + " " + address["postal_code"].encode("utf8")
+            result = self.geocode(addressStr)
 
             if "error" in result and result["error"] == "ZERO_RESULTS":
-                utils.log("Error " + result["error"] + " for address: " + address.decode("utf8"), errorLevels.WARN)
+                utils.log("Error " + result["error"] + " for address: " + addressStr.decode("utf8"), errorLevels.WARN)
             elif "error" in result:
                 utils.log("Error " + result["error"], errorLevels.ERROR)
             else:
-                self.output(input_data, result)
+                self.output(address, result)
 
     def help(self):
         return """
