@@ -1,5 +1,10 @@
 # -*- coding: utf8 -*-
 
+locale = dict(
+    REGION = "gr",
+    LANGUAGE = "el"
+)
+
 db = dict(
     HOST = "localhost",
     DATABASE = "placesdb",

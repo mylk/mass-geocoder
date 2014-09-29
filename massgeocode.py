@@ -8,7 +8,6 @@ from json import loads
 from MySQLdb import connect
 from os import access, R_OK
 from argparse import ArgumentParser, Action, RawTextHelpFormatter
-import config # geocoding configuration file
 from utils import Utils, ErrorLevels
 
 utils = Utils()
@@ -172,7 +171,7 @@ class MassGeocode:
             urllib2.install_opener(opener)
 
         try:
-            request = urllib2.urlopen(u"http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=" + config.geocode["LANGUAGE"] + u"&region=" + config.geocode["REGION"] + u"&address=" + quote_plus(address))
+            request = urllib2.urlopen(u"http://maps.googleapis.com/maps/api/geocode/json?sensor=false&language=" + profile.locale["LANGUAGE"] + u"&region=" + profile.locale["REGION"] + u"&address=" + quote_plus(address))
         except:
             utils.log(exc_info(), errorLevels.ERROR)
 
