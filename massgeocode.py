@@ -48,14 +48,14 @@ class MassGeocode:
 
         help_descr = self.help()
         argparser = ArgumentParser(description=help_descr, formatter_class=RawTextHelpFormatter)
-        argparser.add_argument("-p", "--profile", help="The application profile.", required=True, action=LoadProfile)
-        argparser.add_argument("-f", "--file", help="The file that contains the addresses to be queried.", required=False)
-        argparser.add_argument("-m", "--method", help="The media that the addresses will be retrieved.", required=True, action=ArgsDeps)
+        argparser.add_argument("-p", "--profile", help="The application profile, containing format of queries and DB connection info", required=True, action=LoadProfile)
+        argparser.add_argument("-f", "--file", help="The file that contains the addresses to be geocoded.", required=False)
+        argparser.add_argument("-m", "--method", help="The method that the addresses will be retrieved.", required=True, action=ArgsDeps)
         argparser.add_argument("--force", help="Queries will be executed to the database.", action="store_true", default=False)
         argparser.add_argument("--dump", help="Queries will be dumped in the terminal session.", action="store_true", default=True)
         argparser.add_argument("--inserts", help="The type of statements that the application will produce.", action="store_true", default=True)
         argparser.add_argument("--updates", help="The type of statements that the application will produce.", action="store_true", default=False)
-        argparser.add_argument("--proxy", help="The port and address of the proxy server to be used.", default=False)
+        argparser.add_argument("--proxy", help="The address and port of the proxy server to be used.", default=False)
 
         args = argparser.parse_args()
 
