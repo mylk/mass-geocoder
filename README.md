@@ -18,7 +18,7 @@ The script needs execute permissions:
 Example of execution
 ------------------------
 
-        ./massgeocode.py --method db --profile myapp --updates --force
+    ./massgeocode.py --method db --profile myapp --updates --force
 
 Explanation:
 * Retrieving not geocoded places from the database,
@@ -26,11 +26,15 @@ Explanation:
 * formatting into update statements,
 * executing the statements directly to the database.
 
+For help issuing the command:
+
+    ./massgeocode.py --help
+
 
 Dependencies
 ------------------------
 
-Python interpreter has to be installed (script has been developed and tested on python 2.7.3-0ubuntu7).
+Python interpreter has to be installed (script has been developed and tested on python 2.7.3).
 
 Module MySQLdb for MySQL integration and apgparse for argument parsing and argument dependencies have to be installed:
 
