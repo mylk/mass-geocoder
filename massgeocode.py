@@ -222,6 +222,8 @@ class MassGeocode:
 
             if "error" in result and result["error"] == "ZERO_RESULTS":
                 utils.log("Error " + result["error"] + " for address: " + address.decode("utf8"), errorLevels.WARN)
+            elif "error" in result:
+                utils.log("Error " + result["error"], errorLevels.ERROR)
             else:
                 self.output(input_data, result)
 
