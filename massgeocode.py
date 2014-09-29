@@ -97,13 +97,16 @@ class MassGeocode:
             cur = con.cursor()
             cur.execute(profile.db["QUERY"])
 
-            for _result in cur.fetchall():
-                queryResults.append(dict(
-                    address = _result[0],
-                    area = _result[1],
-                    city = _result[2],
-                    prefecture = _result[3],
-                    postal_code = _result[4]
+            for _row in cur.fetchall():
+                # sanitize null values
+                _row = ["" if val is None else val for val in _row]
+
+                results.append(dict(
+                    address = _row[0],
+                    area = _row[1],
+                    city = _row[2],
+                    prefecture = _row[3],
+                    postal_code = _row[4]
                 ))
 
             cur.close()
